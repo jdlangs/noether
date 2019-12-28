@@ -98,10 +98,17 @@ target_link_libraries(halfedge_finder_node
   ${catkin_LIBRARIES}
 )
 
+add_executable(rastering_demo_node
+  src/rastering_demo_node.cpp
+)
+target_link_libraries(rastering_demo_node
+  ${catkin_LIBRARIES}
+)
+
 #############
 ## Install ##
 #############
-install(TARGETS mesh_segmenter_client_node mesh_segmenter_node edge_generator_client halfedge_finder_node
+install(TARGETS mesh_segmenter_client_node mesh_segmenter_node edge_generator_client halfedge_finder_node rastering_demo_node
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
