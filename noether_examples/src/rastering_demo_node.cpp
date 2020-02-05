@@ -98,6 +98,8 @@ public:
       config.min_hole_size = static_cast<double>(cfg[field_names[idx++]]);
       config.min_segment_size = static_cast<double>(cfg[field_names[idx++]]);
       config.search_radius = static_cast<double>(cfg[field_names[idx++]]);
+
+      config.align_major_axis = false;
     }
     catch(XmlRpc::XmlRpcException& e)
     {
@@ -149,10 +151,12 @@ public:
     line_markers_.markers.push_back(createMeshMarker(mesh_file,INPUT_MESH_NS,DEFAULT_FRAME_ID,RAW_MESH_RGBA));
 
 
+    setLogLevel(console_bridge::CONSOLE_BRIDGE_LOG_DEBUG);
 
     // rastering
     tool_path_planner::PlaneSlicerRasterGenerator raster_gen;
-    boost::optional< std::vector<noether_msgs::ToolRasterPath> > temp = raster_gen.generate(mesh_msg,config);
+
+    boost::optional< std::vector<noether_msgs::ToolRasterPath> > temp = raster_gen.generate(mesh_msg, config);
     if(!temp)
     {
       ROS_ERROR("Failed to generate rasters");
@@ -171,13 +175,23 @@ public:
 
 
         std::string ns = RASTER_PATH_NS + std::to_string(i) + std::string("_s[") + std::to_string(j) + std::string("]") ;
-        visualization_msgs::MarkerArray edge_path_axis_markers = convertToAxisMarkers({raster_paths[i].paths[j]},
-                                                                                 DEFAULT_FRAME_ID,
-                                                                                 ns);
+        visualization_msgs::MarkerArray edge_path_axis_markers = convertToAxisMarkers(
+            {raster_paths[i].paths[j]},
+            DEFAULT_FRAME_ID,
+            ns,
+            1,
+            0.001, //axis scale
+            0.005  //axis length
+        );
 
-        visualization_msgs::MarkerArray edge_path_line_markers = convertToArrowMarkers({raster_paths[i].paths[j]},
-                                                                                 DEFAULT_FRAME_ID,
-                                                                                 ns);
+        visualization_msgs::MarkerArray edge_path_line_markers = convertToArrowMarkers(
+            {raster_paths[i].paths[j]},
+            DEFAULT_FRAME_ID,
+            ns,
+            1,
+            0.003, //arrow diameter
+            0.002  //point size
+        );
 
         poses_markers_.markers.insert( poses_markers_.markers.end(),
                                  edge_path_axis_markers.markers.begin(), edge_path_axis_markers.markers.end());

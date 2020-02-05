@@ -47,6 +47,7 @@ public:
     double min_segment_size = 0.01;
     double search_radius = 0.01;
     double min_hole_size = 1e-2;
+    bool align_major_axis = true;
 
     std::string str()
     {

@@ -19,6 +19,8 @@
  * limitations under the License.
  */
 
+#include <numeric>
+
 #include <vtkMath.h>
 #include <vtkBoundingBox.h>
 #include <vtkDoubleArray.h>
@@ -444,6 +446,28 @@ void PlaneSlicerRasterGenerator::setInput(const shape_msgs::Mesh& mesh)
   setInput(pcl_mesh);
 }
 
+Eigen::Affine3d boundingBoxAlignmentTransform(vtkSmartPointer<vtkPolyData> mesh_data)
+{
+  using namespace Eigen;
+
+  // computing mayor axis using oob
+  vtkSmartPointer<vtkOBBTree> oob = vtkSmartPointer<vtkOBBTree>::New();
+  Vector3d corner, x_dir, y_dir, z_dir, sizes;// x is longest, y is mid and z is smallest
+  oob->ComputeOBB(mesh_data,corner.data(), x_dir.data(), y_dir.data(), z_dir.data(), sizes.data());
+
+  // Compute the center of mass
+  Vector3d origin;
+  vtkSmartPointer<vtkCenterOfMass> cog_filter = vtkSmartPointer<vtkCenterOfMass>::New();
+  cog_filter->SetInputData(mesh_data);
+  cog_filter->SetUseScalarsAsWeights(false);
+  cog_filter->Update();
+  cog_filter->GetCenter(origin.data());
+
+  // computing transformation matrix
+  Affine3d t = Translation3d(origin) * AngleAxisd(computeRotation(x_dir, y_dir, z_dir));
+  return t.inverse();
+}
+
 boost::optional<std::vector<noether_msgs::ToolRasterPath> >
 PlaneSlicerRasterGenerator::generate(const PlaneSlicerRasterGenerator::Config& config)
 {
@@ -455,25 +479,16 @@ PlaneSlicerRasterGenerator::generate(const PlaneSlicerRasterGenerator::Config& c
   {
     CONSOLE_BRIDGE_logDebug("%s No mesh data has been provided",getName().c_str());
   }
-  // computing mayor axis using oob
-  vtkSmartPointer<vtkOBBTree> oob = vtkSmartPointer<vtkOBBTree>::New();
-  Vector3d corner, x_dir, y_dir, z_dir, sizes;// x is longest, y is mid and z is smallest
-  oob->ComputeOBB(mesh_data_,corner.data(), x_dir.data(), y_dir.data(), z_dir.data(), sizes.data());
 
-  // Compute the center of mass
-  Vector3d origin;
-  vtkSmartPointer<vtkCenterOfMass> cog_filter = vtkSmartPointer<vtkCenterOfMass>::New();
-  cog_filter->SetInputData(mesh_data_);
-  cog_filter->SetUseScalarsAsWeights(false);
-  cog_filter->Update();
-  cog_filter->GetCenter(origin.data());
-
-  // computing transformation matrix
-  Affine3d t = Translation3d(origin) * AngleAxisd(computeRotation(x_dir, y_dir, z_dir));
-  Affine3d t_inv = t.inverse();
+  Affine3d align_t = Eigen::Affine3d::Identity();
+  if (config.align_major_axis)
+  {
+    align_t = boundingBoxAlignmentTransform(mesh_data_);
+  }
+  Affine3d unalign_t = align_t.inverse();
 
   // transforming data
-  vtkSmartPointer<vtkTransform> vtk_transform = toVtkMatrix(t_inv);
+  vtkSmartPointer<vtkTransform> vtk_transform = toVtkMatrix(align_t);
 
   vtkSmartPointer<vtkTransformFilter> transform_filter = vtkSmartPointer<vtkTransformFilter>::New();
   transform_filter->SetInputData(mesh_data_);
@@ -488,6 +503,7 @@ PlaneSlicerRasterGenerator::generate(const PlaneSlicerRasterGenerator::Config& c
   abs_bounds = bounds.cwiseAbs();
 
   // calculating size
+  Vector3d sizes;
   sizes.x() = abs_bounds[0] > abs_bounds[1] ? 2.0 * abs_bounds[0] : 2.0 *abs_bounds[1];
   sizes.y() = abs_bounds[2] > abs_bounds[3] ? 2.0 * abs_bounds[2] : 2.0 *abs_bounds[3];
   sizes.z() = abs_bounds[4] > abs_bounds[5] ? 2.0 * abs_bounds[4] : 2.0 *abs_bounds[5];
@@ -610,7 +626,7 @@ PlaneSlicerRasterGenerator::generate(const PlaneSlicerRasterGenerator::Config& c
     {
       Vector3d ref_point;
       rasters_data_vec.back().raster_segments.front()->GetPoint(0,ref_point.data()); // first point in previous raster
-      rectifyDirection(raster_lines->GetPoints(), t_inv * ref_point, raster_ids);
+      rectifyDirection(raster_lines->GetPoints(), align_t * ref_point, raster_ids);
     }
 
     for(auto& rpoint_ids: raster_ids)
@@ -637,7 +653,7 @@ PlaneSlicerRasterGenerator::generate(const PlaneSlicerRasterGenerator::Config& c
         // transforming to original coordinate system
         transform_filter = vtkSmartPointer<vtkTransformFilter>::New();
         transform_filter->SetInputData(segment_data);
-        transform_filter->SetTransform(toVtkMatrix(t));
+        transform_filter->SetTransform(toVtkMatrix(unalign_t));
         transform_filter->TransformAllInputVectorsOn();
         transform_filter->Update();
         segment_data = transform_filter->GetPolyDataOutput();
