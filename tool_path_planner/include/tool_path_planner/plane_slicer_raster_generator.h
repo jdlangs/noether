@@ -69,7 +69,7 @@ public:
    * @brief sets the input mesh from which raster paths are to be generated
    * @param mesh The mesh input
    */
-  void setInput(pcl::PolygonMesh::ConstPtr mesh);
+  void setInput(const pcl::PolygonMesh& mesh);
 
   /**
    * @brief sets the input mesh from which raster paths are to be generated
@@ -99,7 +99,7 @@ public:
    * @param config The configuration
    * @return  An array of raster paths or boost::none when it fails.
    */
-  boost::optional< std::vector<noether_msgs::ToolRasterPath> > generate(pcl::PolygonMesh::ConstPtr mesh,
+  boost::optional< std::vector<noether_msgs::ToolRasterPath> > generate(const pcl::PolygonMesh& mesh,
                                                                     const PlaneSlicerRasterGenerator::Config& config);
   /**
    * @brief the class name

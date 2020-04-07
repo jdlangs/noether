@@ -66,6 +66,8 @@ add_library(${PROJECT_NAME}
   src/halfedge_boundary_finder.cpp
   src/utilities.cpp
 )
+# Possibly need no AVX instructions for Eigen memory alignment issues
+# target_compile_options(${PROJECT_NAME} PUBLIC -mno-avx)
 target_link_libraries(${PROJECT_NAME}
     ${catkin_LIBRARIES}
     ${PCL_LIBRARIES}

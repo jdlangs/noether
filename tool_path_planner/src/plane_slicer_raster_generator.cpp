@@ -46,7 +46,7 @@
 #include <vtkErrorCode.h>
 
 #include <boost/make_shared.hpp>
-#include<Eigen/StdVector>
+#include <Eigen/StdVector>
 #include <eigen_conversions/eigen_msg.h>
 #include <pcl/surface/vtk_smoothing/vtk_utils.h>
 #include <console_bridge/console.h>
@@ -344,7 +344,6 @@ static std::vector<noether_msgs::ToolRasterPath> convertToPoses(const std::vecto
 
     for(const PolyDataPtr& polydata : raster_segments)
     {
-      std::vector<Eigen::Isometry3d, Eigen::aligned_allocator<Eigen::Isometry3d> > raster_poses;
       std::size_t num_points = polydata->GetNumberOfPoints();
       Vector3d p, p_next, vx, vy, vz;
       Isometry3d pose;
@@ -354,6 +353,9 @@ static std::vector<noether_msgs::ToolRasterPath> convertToPoses(const std::vecto
       {
         std::reverse(indices.begin(), indices.end());
       }
+
+      //preallocation was needed to avoid an Eigen alignment assertion failing
+      std::vector<Eigen::Isometry3d, Eigen::aligned_allocator<Eigen::Isometry3d>> raster_poses(indices.size()+1);
       for(std::size_t i = 0; i < indices.size() - 1; i++)
       {
         int idx = indices[i];
@@ -365,12 +367,12 @@ static std::vector<noether_msgs::ToolRasterPath> convertToPoses(const std::vecto
         vy = vz.cross(vx).normalized();
         vz = vx.cross(vy).normalized();
         pose = Translation3d(p) * AngleAxisd(computeRotation(vx, vy, vz));
-        raster_poses.push_back(pose);
+        raster_poses.at(i) = pose;
       }
 
       // adding last pose
       pose.translation() = p_next; // orientation stays the same as previous
-      raster_poses.push_back(pose);
+      raster_poses.back() = pose;
 
       // convert to poses msg
       geometry_msgs::PoseArray raster_poses_msg;
@@ -401,10 +403,10 @@ PlaneSlicerRasterGenerator::~PlaneSlicerRasterGenerator()
 
 }
 
-void PlaneSlicerRasterGenerator::setInput(pcl::PolygonMesh::ConstPtr mesh)
+void PlaneSlicerRasterGenerator::setInput(const pcl::PolygonMesh& mesh)
 {
   mesh_data_ = vtkSmartPointer<vtkPolyData>::New();
-  pcl::VTKUtils::mesh2vtk(*mesh, mesh_data_);
+  pcl::VTKUtils::mesh2vtk(mesh, mesh_data_);
   mesh_data_->BuildLinks();
   mesh_data_->BuildCells();
 
@@ -443,7 +445,7 @@ void PlaneSlicerRasterGenerator::setInput(const shape_msgs::Mesh& mesh)
 {
   pcl::PolygonMesh::Ptr pcl_mesh = boost::make_shared<pcl::PolygonMesh>();
   noether_conversions::convertToPCLMesh(mesh,*pcl_mesh);
-  setInput(pcl_mesh);
+  setInput(*pcl_mesh);
 }
 
 Eigen::Affine3d boundingBoxAlignmentTransform(vtkSmartPointer<vtkPolyData> mesh_data)
@@ -498,9 +500,12 @@ PlaneSlicerRasterGenerator::generate(const PlaneSlicerRasterGenerator::Config& c
   vtkSmartPointer<vtkPolyData> transformed_mesh_data = transform_filter->GetPolyDataOutput();
 
   // compute bounds
-  VectorXd bounds(6), abs_bounds(6);
-  transformed_mesh_data->GetBounds(bounds.data());
-  abs_bounds = bounds.cwiseAbs();
+  std::array<double, 6> bounds_arr;
+  transformed_mesh_data->GetBounds(bounds_arr.data());
+
+  // had to make these fixed size to avoid alignment segfaults
+  Matrix<double,6,1> bounds = Map<VectorXd>(bounds_arr.data(), 6, 1);
+  Matrix<double,6,1> abs_bounds = bounds.cwiseAbs();
 
   // calculating size
   Vector3d sizes;
@@ -689,7 +694,7 @@ PlaneSlicerRasterGenerator::generate(const shape_msgs::Mesh& mesh, const PlaneSl
 }
 
 boost::optional<std::vector<noether_msgs::ToolRasterPath> >
-PlaneSlicerRasterGenerator::generate(pcl::PolygonMesh::ConstPtr mesh, const PlaneSlicerRasterGenerator::Config& config)
+PlaneSlicerRasterGenerator::generate(const pcl::PolygonMesh& mesh, const PlaneSlicerRasterGenerator::Config& config)
 {
   setInput(mesh);
   return generate(config);
